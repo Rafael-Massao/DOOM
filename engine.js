@@ -11,24 +11,36 @@ window.addEventListener("resize", () => {
     canvas.height = window.innerHeight;
 });
 
-const TILE = 100;
+const TILE = 400;
 
 const map = [
-    [1,1,1,1,1,1,1,1,1,1],
-    [1,0,0,0,0,0,0,1,0,1],
-    [1,0,1,0,1,0,0,1,0,1],
-    [1,0,1,0,1,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,1,1],
-    [1,0,0,1,0,1,0,1,0,1],
-    [1,0,1,0,0,0,0,1,0,1],
-    [1,0,1,1,0,0,0,1,0,1],
-    [1,0,0,0,0,0,0,0,0,1],
-    [1,1,1,1,1,1,1,1,1,1]
+
+// 20x20
+[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+[1,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,1],
+[1,0,1,1,1,0,1,0,1,1,1,1,0,1,0,1,1,1,0,1],
+[1,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,1],
+[1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1,0,1,0,1],
+[1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,1,0,0,0,1],
+[1,1,1,0,1,0,1,0,1,1,1,1,1,0,1,1,1,1,0,1],
+[1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,0,1],
+[1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,0,1,0,1],
+[1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1],
+[1,0,1,0,1,1,1,1,1,0,1,1,1,1,0,1,1,1,0,1],
+[1,0,0,0,1,0,0,0,1,0,1,0,0,1,0,0,0,1,0,1],
+[1,1,1,0,1,0,1,0,1,0,1,0,1,1,1,1,0,1,0,1],
+[1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,1],
+[1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,0,1],
+[1,0,0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,1],
+[1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1],
+[1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1],
+[1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,0,1],
+[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ];
 
 const player = {
-    x: 150,
-    y: 150,
+    x: 500,
+    y: 500,
     angle: 0,
     pitch: 0,
     speed: 0.1 // Velocidade base ajustada para rodar com o Delta Time
@@ -36,70 +48,131 @@ const player = {
 
 const keys = {};
 
+// ================= SPRITES =================
+
+// Sprite parada
+const weaponIdle = new Image();
+weaponIdle.src = "/weapon_idle/weapon_idle.png";
+
+// Frames de tiro
+const shootFrames = [];
+
+for(let i = 0; i < 4; i++){
+
+    const img = new Image();
+
+    img.src = `/shoot/shoot_${i}.png`;
+
+    shootFrames.push(img);
+}
+
+
+// Controle animações
+let shootFrameIndex = 0;
+let shootFrameTime = 0;
+let shootFrameSpeed = 100;
+
+let reloadFrameIndex = 0;
+
+let reloadTime = 1000;
+let reloadStartTime = 0;
+let reloadProgress = 0;
+
 let shooting = false;
+
+// Status
 let life = 100;
 let armor = 50;
 let ammo = 10;         
 let reserveAmmo = 60;   
-const MAX_AMMO = 10;   
+const MAX_AMMO = 10;
+
+// Recarregamento   
 let isReloading = false;
 let weapon = "PISTOL";
 let lastTime = 0;
 let deltaTime = 16;
 const reloadFrames = [];
 
-for(let i = 0; i <= 3; i++){
+// Frames reload
+for(let i = 0; i < 5; i++){
 
-    let img = new Image();
+    const img = new Image();
 
-    img.src = `reload_${i}.png`;
-
-    img.onerror = () => {
-        console.log(`Erro ao carregar reload_${i}.png`);
-    };
+    img.src = `/reload/reload_${i}.png`;
 
     reloadFrames.push(img);
 }
 
-let reloadFrameIndex = 0;
-let reloadProgress = 0;
-let reloadStartTime = 0;
-const reloadTime = 800;
+// Gun Bobbing
+let bobTime = 0;
+let weaponBobX = 0;
+let weaponBobY = 0;
 
+// Recoil
+let recoil = 0;
+let recoilRecover = 0;
 
-document.addEventListener("keyup", (e) => {
-    keys[e.key.toLowerCase()] = false;
-});
+let recoilRotation = 0;
 
+// Mouse sway
+let swayX = 0;
+let swayY = 0;
+
+let targetSwayX = 0;
+let targetSwayY = 0;
+
+// Tilt lateral
+let weaponTilt = 0;
+let targetTilt = 0;
+
+// Inertia
+let inertiaX = 0;
+let inertiaY = 0;
+
+// Clique trava o mouse no canvas
 canvas.addEventListener("click", () => {
     canvas.requestPointerLock();
 });
 
-document.addEventListener("pointerlockchange", () => {
-    if (document.pointerLockElement !== canvas) {
-        for (let key in keys) {
-            keys[key] = false;
-        }
-    }
-});
-
+// Movimento do mouse
 document.addEventListener("mousemove", (e) => {
-    if (document.pointerLockElement === canvas) {
-        player.angle += e.movementX * 0.0025;
-        player.pitch -= e.movementY * 0.5;
-        player.pitch = Math.max(-150, Math.min(150, player.pitch));
-    }
+
+    if (document.pointerLockElement !== canvas) return;
+
+    player.angle += e.movementX * 0.0025;
+    player.pitch -= e.movementY * 0.5;
+
+    targetSwayX = e.movementX * 0.35;
+    targetSwayY = e.movementY * 0.2;
+
+    inertiaX = e.movementX * 0.15;
+    inertiaY = e.movementY * 0.08;
+
+    player.pitch = Math.max(
+        -150,
+        Math.min(150, player.pitch)
+    );
 });
 
 document.addEventListener("mousedown", (e) => {
-    if (e.button !== 0 || ammo <= 0 || shooting || isReloading) return; 
+
+    if (
+        e.button !== 0 ||
+        ammo <= 0 ||
+        shooting ||
+        isReloading
+    ) return;
+
     shooting = true;
+
     ammo--;
 
-    // Mantém o flash do tiro visível por 100ms
-    setTimeout(() => {
-        shooting = false;
-    }, 100);
+    recoil = 25;
+    recoilRotation = 6;
+
+    shootFrameIndex = 0;
+    shootFrameTime = 0;
 });
 
 canvas.addEventListener("contextmenu", (e) => {
@@ -130,6 +203,39 @@ function wallCollision(x, y) {
 }
 
 function move() {
+
+    if(keys["a"]){
+    targetTilt = -8;
+    }
+    else if(keys["d"]){
+        targetTilt = 8;
+    }
+    else{
+        targetTilt = 0;
+    }
+        const moving =
+        keys["w"] ||
+        keys["a"] ||
+        keys["s"] ||
+        keys["d"];
+
+    if(moving){
+
+        bobTime += deltaTime * 0.008;
+
+        weaponBobX = Math.cos(bobTime) * 8;
+
+        weaponBobY = Math.abs(
+            Math.sin(bobTime)
+        ) * 10;
+
+    }
+    else{
+
+        weaponBobX *= 0.85;
+        weaponBobY *= 0.85;
+    }
+
     let nextX = player.x;
     let nextY = player.y;
 
@@ -172,8 +278,23 @@ document.addEventListener("keyup", (e) => {
     keys[e.key.toLowerCase()] = false;
 });
 
+// Esc - pausa
+let paused = false;
+
+document.addEventListener("pointerlockchange", () => {
+
+    paused =
+    document.pointerLockElement !== canvas;
+
+    // limpa inputs presos
+    for(let key in keys){
+
+        keys[key] = false;
+    }
+});
+
 function castRay(angle) {
-    for (let depth = 0; depth < 1000; depth++) {
+    for (let depth = 0; depth < 1000; depth += 4) {
         let rayX = player.x + Math.cos(angle) * depth;
         let rayY = player.y + Math.sin(angle) * depth;
 
@@ -260,7 +381,7 @@ rayAngle-player.angle
 );
 
 let wallHeight=
-8000/distance; // aumentei altura
+9000/distance;
 
 wallHeight=
 Math.min(
@@ -297,183 +418,74 @@ wallHeight
 
 }
 
+// ================= ARMA =================
+ctx.save();
 
-    
-   // ================= ARMA =================
+const weaponX =
+canvas.width/2 + 180 +
+weaponBobX +
+swayX +
+inertiaX;
 
-if (isReloading && reloadFrames[reloadFrameIndex]) {
+const weaponY =
+canvas.height - 170 +
+weaponBobY +
+recoil +
+swayY +
+inertiaY;
 
-    // Sprite da animação de reload
+ctx.translate(weaponX, weaponY);
+
+ctx.rotate(
+(recoilRotation + weaponTilt) * Math.PI / 180
+);
+
+// RELOAD
+if(
+    isReloading &&
+    reloadFrames[reloadFrameIndex] &&
+    reloadFrames[reloadFrameIndex].complete
+){
+
     ctx.drawImage(
         reloadFrames[reloadFrameIndex],
-        canvas.width / 2 - 180,
-        canvas.height - 280,
-        350,
-        250
-    );
-
-} else {
-
-    let weaponOffset = shooting ? 15 : 0;
-
-    // Flash do tiro
-    if (shooting) {
-
-        let flash = ctx.createRadialGradient(
-            canvas.width/2,
-            canvas.height-230,
-            10,
-            canvas.width/2,
-            canvas.height-230,
-            80
-        );
-
-        flash.addColorStop(
-            0,
-            "rgba(255,255,200,1)"
-        );
-
-        flash.addColorStop(
-            0.4,
-            "rgba(255,100,0,0.8)"
-        );
-
-        flash.addColorStop(
-            1,
-            "rgba(0,0,0,0)"
-        );
-
-        ctx.fillStyle = flash;
-
-        ctx.beginPath();
-
-        ctx.arc(
-            canvas.width/2,
-            canvas.height-230,
-            80,
-            0,
-            Math.PI*2
-        );
-
-        ctx.fill();
-    }
-
-    // Corpo principal
-    ctx.fillStyle="#444";
-
-    ctx.fillRect(
-        canvas.width/2-45,
-        canvas.height-170+weaponOffset,
-        90,
-        60
-    );
-
-    // Parte superior
-    ctx.fillStyle="#555";
-
-    ctx.fillRect(
-        canvas.width/2-35,
-        canvas.height-190+weaponOffset,
-        70,
-        25
-    );
-
-    // Cano
-    ctx.fillStyle="#222";
-
-    ctx.fillRect(
-        canvas.width/2-8,
-        canvas.height-220+weaponOffset,
-        16,
-        40
-    );
-
-    // Boca do cano
-    ctx.fillStyle="#111";
-
-    ctx.fillRect(
-        canvas.width/2-12,
-        canvas.height-225+weaponOffset,
-        24,
-        8
-    );
-
-    // Mira frontal azul
-    ctx.fillStyle="#00ffff";
-
-    ctx.fillRect(
-        canvas.width/2-2,
-        canvas.height-210+weaponOffset,
-        4,
-        10
-    );
-
-    // Cabo
-    ctx.fillStyle="#333";
-
-    ctx.beginPath();
-
-    ctx.moveTo(
-        canvas.width/2-30,
-        canvas.height-110+weaponOffset
-    );
-
-    ctx.lineTo(
-        canvas.width/2-10,
-        canvas.height-60+weaponOffset
-    );
-
-    ctx.lineTo(
-        canvas.width/2+10,
-        canvas.height-60+weaponOffset
-    );
-
-    ctx.lineTo(
-        canvas.width/2+30,
-        canvas.height-110+weaponOffset
-    );
-
-    ctx.closePath();
-
-    ctx.fill();
-
-    // Detalhe lateral
-    ctx.fillStyle="#777";
-
-    ctx.fillRect(
-        canvas.width/2-20,
-        canvas.height-155+weaponOffset,
-        40,
-        8
+        -220,
+        -150,
+        440,
+        300
     );
 }
 
-// Mira da tela
-ctx.strokeStyle="rgba(255,255,255,0.5)";
+// SHOOT
+else if(
+    shooting &&
+    shootFrames[shootFrameIndex] &&
+    shootFrames[shootFrameIndex].complete
+){
 
-ctx.beginPath();
+    ctx.drawImage(
+        shootFrames[shootFrameIndex],
+        -220,
+        -150,
+        440,
+        300
+    );
+}
 
-ctx.moveTo(
-    canvas.width/2-8,
-    canvas.height/2
-);
+// IDLE
+else{
 
-ctx.lineTo(
-    canvas.width/2+8,
-    canvas.height/2
-);
+    ctx.drawImage(
+        weaponIdle,
+        -220,
+        -150,
+        440,
+        300
+    );
+}
 
-ctx.moveTo(
-    canvas.width/2,
-    canvas.height/2-8
-);
+ctx.restore();
 
-ctx.lineTo(
-    canvas.width/2,
-    canvas.height/2+8
-);
-
-ctx.stroke();
 
     // Minimapa
     const scale = 15;
@@ -609,6 +621,21 @@ ctx.lineWidth = 1;
     ctx.font = "20px Arial";
     ctx.fillText(`FPS: ${Math.round(1000 / deltaTime)}`, canvas.width - 120, 30);
 
+    if(paused){
+
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    ctx.fillStyle = "white";
+    ctx.font = "50px Arial";
+    ctx.textAlign = "center";
+
+    ctx.fillText(
+        "CLICK TO PLAY",
+        canvas.width / 2,
+        canvas.height / 2
+        );
+    }
 }
 
 // Recarregamento
@@ -624,10 +651,32 @@ function reload() {
     reloadStartTime = performance.now();
 
     reloadFrameIndex = 0;
-    reloadFrameTime = 0;
 }
 
 function gameLoop(time) {
+
+    if(paused){
+        requestAnimationFrame(gameLoop);
+        return;
+    }
+
+    // Smooth sway
+    swayX += (targetSwayX - swayX) * 0.12;
+    swayY += (targetSwayY - swayY) * 0.12;
+
+    targetSwayX *= 0.7;
+    targetSwayY *= 0.7;
+
+    // Smooth tilt
+    weaponTilt += (targetTilt - weaponTilt) * 0.1;
+
+    // Inertia decay
+    inertiaX *= 0.9;
+    inertiaY *= 0.9;
+
+    // Recoil smooth
+    recoil += (0 - recoil) * 0.15;
+    recoilRotation += (0 - recoilRotation) * 0.15;
 
     if (!lastTime){
         lastTime = time;
@@ -640,23 +689,53 @@ function gameLoop(time) {
         deltaTime = 16;
     }
 
+// ================= SHOOT =================
+// Animação de Tiro
+
+// ================= SHOOT =================
+
+if(shooting){
+
+    shootFrameTime += deltaTime;
+
+    if(shootFrameTime >= shootFrameSpeed){
+
+        shootFrameTime = 0;
+
+        shootFrameIndex++;
+
+        // terminou animação
+        if(shootFrameIndex >= shootFrames.length){
+
+            shooting = false;
+
+            shootFrameIndex = 0;
+        }
+    }
+}
+
 // ================= RELOAD =================
 // Animação de Reload
-    if(isReloading){
+if(isReloading){
 
     reloadProgress =
     (time - reloadStartTime) / reloadTime;
 
-    // distribui os frames automaticamente
-    reloadFrameIndex = Math.floor(
+    reloadFrameIndex = Math.min(
+    Math.floor(
         reloadProgress * reloadFrames.length
-    );
+    ),
+    reloadFrames.length - 1
+);
 
+    // trava no último frame
     if(reloadFrameIndex >= reloadFrames.length){
+
         reloadFrameIndex =
         reloadFrames.length - 1;
     }
 
+    // terminou reload
     if(reloadProgress >= 1){
 
         let needed =
@@ -677,7 +756,6 @@ function gameLoop(time) {
         reloadFrameIndex = 0;
     }
 }
-
     move();
 
     // render faz TODO desenho
