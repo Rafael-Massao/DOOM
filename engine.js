@@ -11,7 +11,7 @@ window.addEventListener("resize", () => {
     canvas.height = window.innerHeight;
 });
 
-const TILE = 400;
+const TILE = 150;
 
 const map = [
 
@@ -49,10 +49,28 @@ const player = {
 const keys = {};
 
 // ================= SPRITES =================
+// R0stos
+const faceNormal = new Image();
+faceNormal.src = "/face/face_normal.png";
+
+const faceShoot = new Image();
+faceShoot.src = "/face/face_hurt.png";
+
+const faceHurt = new Image();
+faceHurt.src = "/face/face_bleed.png";
+
+const faceDead = new Image();
+faceDead.src = "/face/face_death.png";
 
 // Sprite parada
 const weaponIdle = new Image();
 weaponIdle.src = "/weapon_idle/weapon_idle.png";
+
+// Sprite Mira
+const weaponAim = new Image();
+weaponAim.src = "/weapon_aim/weapon_aim.png";
+
+let aiming = false;
 
 // Frames de tiro
 const shootFrames = [];
@@ -66,18 +84,38 @@ for(let i = 0; i < 4; i++){
     shootFrames.push(img);
 }
 
+// Arma atual
+const butterflyIdle = new Image();
+butterflyIdle.src = "/butterfly/butterfly_idle/butterfly_idle.png";
+
+const butterflySpinFrames = [];
+
+for(let i = 0; i < 6; i++){
+
+    const img = new Image();
+
+    img.src = `/butterfly/butterfly_push/butterfly_push_${i}.png`;
+
+    butterflySpinFrames.push(img);
+}
+
+let currentWeapon = "PISTOL";
+
+// Butterfly
+let butterflySpinning = false;
+let butterflyFrame = 0;
+let butterflyFrameTime = 0;
+let butterflyDirection = 1;
+let butterflyEquipping = false;
 
 // Controle animações
 let shootFrameIndex = 0;
 let shootFrameTime = 0;
 let shootFrameSpeed = 100;
-
 let reloadFrameIndex = 0;
-
 let reloadTime = 1000;
 let reloadStartTime = 0;
 let reloadProgress = 0;
-
 let shooting = false;
 
 // Status
@@ -89,7 +127,6 @@ const MAX_AMMO = 10;
 
 // Recarregamento   
 let isReloading = false;
-let weapon = "PISTOL";
 let lastTime = 0;
 let deltaTime = 16;
 const reloadFrames = [];
@@ -103,6 +140,9 @@ for(let i = 0; i < 5; i++){
 
     reloadFrames.push(img);
 }
+
+// Mapa 
+let showMinimap = false;
 
 // Gun Bobbing
 let bobTime = 0;
@@ -154,6 +194,27 @@ document.addEventListener("mousemove", (e) => {
         Math.min(150, player.pitch)
     );
 });
+document.addEventListener("mousedown", (e) => {
+
+    if(e.button === 2){
+
+        if(currentWeapon === "PISTOL"){
+
+            aiming = true;
+            return;
+        }
+
+        if(
+            currentWeapon === "BUTTERFLY" &&
+            !butterflySpinning
+        ){
+            butterflySpinning = true;
+            butterflyFrame = 0;
+            butterflyFrameTime = 0;
+            butterflyDirection = 1;
+        }
+    }
+});
 
 document.addEventListener("mousedown", (e) => {
 
@@ -161,18 +222,31 @@ document.addEventListener("mousedown", (e) => {
         e.button !== 0 ||
         ammo <= 0 ||
         shooting ||
-        isReloading
+        isReloading ||
+        currentWeapon !== "PISTOL"
     ) return;
 
     shooting = true;
 
-    ammo--;
+        if(currentWeapon === "PISTOL"){
+        ammo--;
+    }
 
     recoil = 25;
     recoilRotation = 6;
 
     shootFrameIndex = 0;
     shootFrameTime = 0;
+});
+
+document.addEventListener("mouseup", (e) => {
+
+    if(
+        e.button === 2 &&
+        currentWeapon === "PISTOL"
+    ){
+        aiming = false;
+    }
 });
 
 canvas.addEventListener("contextmenu", (e) => {
@@ -266,12 +340,38 @@ if (!wallCollision(player.x, nextY)) {
 }
 }
 document.addEventListener("keydown", (e) => {
+
     if (document.pointerLockElement !== canvas) return;
 
     const key = e.key.toLowerCase();
+
     keys[key] = true;
 
-    if (key === "r") reload();
+    if(key === "m"){
+        showMinimap = !showMinimap;
+    }
+
+    if (key === "r" && currentWeapon === "PISTOL") {
+    reload();
+    }
+
+    if(key === "1"){
+    currentWeapon = "PISTOL";
+    }
+
+    if(
+    key === "2" &&
+    currentWeapon !== "BUTTERFLY"
+){
+    currentWeapon = "BUTTERFLY";
+
+    butterflyEquipping = true;
+
+    butterflyFrame = 0;
+    butterflyFrameTime = 0;
+    butterflyDirection = 1;
+}
+
 });
 
 document.addEventListener("keyup", (e) => {
@@ -311,8 +411,32 @@ function castRay(angle) {
     return 1000;
 }
 
-function render() {
+let weaponOffsetX = 180;
+let weaponOffsetY = -170;
 
+function getCurrentFace() {
+
+    // rosto sorrindo enquanto atira
+    if (shooting) {
+        return faceShoot;
+    }
+
+    // vida baixa
+    if (life <= 20) {
+        return faceDead;
+    }
+
+    // machucado
+    if (life <= 50) {
+        return faceHurt;
+    }
+
+    // normal
+    return faceNormal;
+}
+
+function render() {
+    
 ctx.clearRect(
 0,
 0,
@@ -363,8 +487,11 @@ canvas.height
 
 
 // PAREDES
-const FOV=Math.PI/3;
-const rays=canvas.width;
+const FOV =
+    aiming
+    ? Math.PI / 5
+    : Math.PI / 3;
+const rays = Math.floor(canvas.width);
 
 for(let i=0;i<rays;i++){
 
@@ -418,88 +545,137 @@ wallHeight
 
 }
 
-// ================= ARMA =================
-ctx.save();
-
 const weaponX =
-canvas.width/2 + 180 +
-weaponBobX +
-swayX +
-inertiaX;
+    canvas.width / 2 +
+    weaponOffsetX +
+    weaponBobX +
+    swayX +
+    inertiaX;
 
 const weaponY =
-canvas.height - 170 +
-weaponBobY +
-recoil +
-swayY +
-inertiaY;
+    canvas.height +
+    weaponOffsetY +
+    weaponBobY +
+    recoil +
+    swayY +
+    inertiaY;
+
+// ================= ARMA =================
+ctx.save();
 
 ctx.translate(weaponX, weaponY);
 
 ctx.rotate(
-(recoilRotation + weaponTilt) * Math.PI / 180
+(recoilRotation + weaponTilt) *
+Math.PI / 180
 );
 
-// RELOAD
-if(
-    isReloading &&
-    reloadFrames[reloadFrameIndex] &&
-    reloadFrames[reloadFrameIndex].complete
-){
+if(currentWeapon === "BUTTERFLY"){
 
-    ctx.drawImage(
-        reloadFrames[reloadFrameIndex],
-        -220,
-        -150,
-        440,
-        300
-    );
+    if(
+        (butterflyEquipping || butterflySpinning) &&
+        butterflySpinFrames[butterflyFrame]
+    ){
+        ctx.drawImage(
+            butterflySpinFrames[butterflyFrame],
+            -220,
+            -150,
+            440,
+            300
+        );
+    }
+    else{
+        ctx.drawImage(
+            butterflyIdle,
+            -220,
+            -150,
+            440,
+            300
+        );
+    }
 }
-
-// SHOOT
-else if(
-    shooting &&
-    shootFrames[shootFrameIndex] &&
-    shootFrames[shootFrameIndex].complete
-){
-
-    ctx.drawImage(
-        shootFrames[shootFrameIndex],
-        -220,
-        -150,
-        440,
-        300
-    );
-}
-
-// IDLE
 else{
 
-    ctx.drawImage(
-        weaponIdle,
-        -220,
-        -150,
-        440,
-        300
-    );
+    if(
+        isReloading &&
+        reloadFrames[reloadFrameIndex]
+    ){
+        ctx.drawImage(
+            reloadFrames[reloadFrameIndex],
+            -220,
+            -150,
+            440,
+            300
+        );
+    }
+    else if(
+        shooting &&
+        shootFrames[shootFrameIndex]
+    ){
+        ctx.drawImage(
+            shootFrames[shootFrameIndex],
+            -220,
+            -150,
+            440,
+            300
+        );
+    }
+    else{
+
+        const sprite =
+            aiming
+            ? weaponAim
+            : weaponIdle;
+
+        ctx.drawImage(
+            sprite,
+            -220,
+            -150,
+            440,
+            300
+        );
+    }
 }
 
 ctx.restore();
 
 
     // Minimapa
+    if(showMinimap){
+
     const scale = 15;
-    for (let y = 0; y < map.length; y++) {
-        for (let x = 0; x < map[y].length; x++) {
-            ctx.fillStyle = map[y][x] === 1 ? "white" : "#222";
-            ctx.fillRect(x * scale, y * scale, scale, scale);
+
+    for(let y = 0; y < map.length; y++){
+
+        for(let x = 0; x < map[y].length; x++){
+
+            ctx.fillStyle =
+                map[y][x] === 1
+                ? "white"
+                : "#222";
+
+            ctx.fillRect(
+                x * scale,
+                y * scale,
+                scale,
+                scale
+            );
         }
     }
 
     ctx.beginPath();
-    ctx.arc((player.x / TILE) * scale, (player.y / TILE) * scale, 4, 0, Math.PI * 2);
+
+    ctx.arc(
+        (player.x / TILE) * scale,
+        (player.y / TILE) * scale,
+        4,
+        0,
+        Math.PI * 2
+    );
+
     ctx.fillStyle = "red";
     ctx.fill();
+}
 
     // ================= HUD DOOM =================
     const hudY = canvas.height - 90;
@@ -531,81 +707,27 @@ ctx.restore();
     ctx.font = "30px Arial";
     ctx.fillText(life + "%", 150, hudY + 60);
 
- // ================= ROSTO REATIVO AO DANO E AO TIRO =================
-ctx.fillStyle = "black";
-ctx.fillRect(canvas.width / 2 - 40, hudY + 10, 80, 70);
+ ctx.fillStyle = "black";
 
-// Base da cabeça (cor muda conforme a vida)
-ctx.beginPath();
-ctx.arc(canvas.width / 2, hudY + 40, 20, 0, Math.PI * 2);
-if (life > 50) ctx.fillStyle = "#f0c090"; 
-else if (life > 20) ctx.fillStyle = "#e0a070"; 
-else ctx.fillStyle = "#b09080"; 
-ctx.fill();
+ctx.fillRect(
+    canvas.width / 2 - 40,
+    hudY + 10,
+    80,
+    70
+);
 
-// Olhos
-ctx.fillStyle = "black";
-if (shooting) {
-    // Olhos "vibrando" ou arregalados de loucura ao atirar
-    ctx.beginPath();
-    ctx.arc(canvas.width / 2 - 9, hudY + 34, 3, 0, Math.PI * 2);
-    ctx.arc(canvas.width / 2 + 9, hudY + 34, 3, 0, Math.PI * 2);
-    ctx.fill();
-} else if (life > 20) {
-    // Olhos normais
-    ctx.beginPath();
-    ctx.arc(canvas.width / 2 - 8, hudY + 35, 2, 0, Math.PI * 2);
-    ctx.arc(canvas.width / 2 + 8, hudY + 35, 2, 0, Math.PI * 2);
-    ctx.fill();
-} else {
-    // Olhos semicerrados de dor
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(canvas.width / 2 - 12, hudY + 35); ctx.lineTo(canvas.width / 2 - 4, hudY + 35);
-    ctx.moveTo(canvas.width / 2 + 4, hudY + 35); ctx.lineTo(canvas.width / 2 + 12, hudY + 35);
-    ctx.stroke();
-}
+const face = getCurrentFace();
 
-// BOCA DINÂMICA (A parte que você queria!)
-ctx.beginPath();
-ctx.strokeStyle = "black";
-ctx.lineWidth = 3;
-
-if (shooting) {
-    // SORRISO MANÍACO: Um arco para cima bem largo
-    ctx.arc(canvas.width / 2, hudY + 42, 8, 0, Math.PI, false);
-} else {
-    // Expressões normais baseadas na vida
-    ctx.lineWidth = 2;
-    if (life > 70) {
-        // Sério
-        ctx.moveTo(canvas.width / 2 - 8, hudY + 48);
-        ctx.lineTo(canvas.width / 2 + 8, hudY + 48);
-    } else if (life > 30) {
-        // Triste/Dor
-        ctx.arc(canvas.width / 2, hudY + 54, 6, Math.PI, 0, false);
-    } else {
-        // Agonia (Boca aberta)
-        ctx.arc(canvas.width / 2, hudY + 50, 4, 0, Math.PI * 2);
-    }
-}
-ctx.stroke();
-
-// Detalhes de sangue (mesmo atirando, o sangue continua lá)
-if (life <= 70) {
-    ctx.strokeStyle = "#800000";
-    ctx.lineWidth = 2;
-    if (life > 30) {
-        ctx.beginPath();
-        ctx.moveTo(canvas.width / 2 - 12, hudY + 42); ctx.lineTo(canvas.width / 2 - 6, hudY + 46);
-        ctx.stroke();
-    } else {
-        ctx.fillStyle = "#800000";
-        ctx.fillRect(canvas.width / 2 - 4, hudY + 22, 3, 8); // Testa
-        ctx.fillRect(canvas.width / 2 - 2, hudY + 50, 4, 10); // Queixo
-    }
-}
+ctx.drawImage(
+    face,
+    canvas.width / 2 - 40,
+    hudY + 10,
+    80,
+    70
+);
 ctx.lineWidth = 1;
+
+const fps = Math.round(1000 / Math.max(deltaTime, 1));
 
     // Armor
     ctx.fillStyle = "black";
@@ -619,7 +741,7 @@ ctx.lineWidth = 1;
     // Contadores de FPS no topo direito
     ctx.fillStyle = "white";
     ctx.font = "20px Arial";
-    ctx.fillText(`FPS: ${Math.round(1000 / deltaTime)}`, canvas.width - 120, 30);
+    ctx.fillText(`FPS: ${fps}`, canvas.width - 120, 30);
 
     if(paused){
 
@@ -635,6 +757,28 @@ ctx.lineWidth = 1;
         canvas.width / 2,
         canvas.height / 2
         );
+    }
+
+    if(
+        aiming &&
+        currentWeapon === "PISTOL"
+    ){
+
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 2;
+
+        const x = canvas.width / 2;
+        const y = canvas.height / 2;
+
+        ctx.beginPath();
+
+        ctx.moveTo(x - 10, y);
+        ctx.lineTo(x + 10, y);
+
+        ctx.moveTo(x, y - 10);
+        ctx.lineTo(x, y + 10);
+
+        ctx.stroke();
     }
 }
 
@@ -691,8 +835,6 @@ function gameLoop(time) {
 
 // ================= SHOOT =================
 // Animação de Tiro
-
-// ================= SHOOT =================
 
 if(shooting){
 
@@ -756,6 +898,49 @@ if(isReloading){
         reloadFrameIndex = 0;
     }
 }
+if(
+    butterflyEquipping ||
+    butterflySpinning
+){
+    butterflyFrameTime += deltaTime;
+
+    if(butterflyFrameTime >= 150){
+
+        butterflyFrameTime = 0;
+
+        butterflyFrame += butterflyDirection;
+
+        if(
+            butterflyFrame <= 0 &&
+            butterflyDirection === -1
+        ){
+            butterflyDirection = 1;
+        }
+
+        if (
+            butterflyFrame >= butterflySpinFrames.length - 1 &&
+            butterflyDirection === 1
+        ){
+            butterflyFrame = butterflySpinFrames.length - 1;
+
+            butterflySpinning = false;
+            butterflyEquipping = false;
+        }
+    }
+}
+
+if(
+    aiming &&
+    currentWeapon === "PISTOL"
+){
+    weaponOffsetX += (0 - weaponOffsetX) * 0.1;
+    weaponOffsetY += (-80 - weaponOffsetY) * 0.1;
+}
+else{
+    weaponOffsetX += (180 - weaponOffsetX) * 0.1;
+    weaponOffsetY += (-170 - weaponOffsetY) * 0.1;
+}
+
     move();
 
     // render faz TODO desenho
